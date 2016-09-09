@@ -23,3 +23,7 @@ struct test_case
 void ListAllTestCases();
 int RunTestCase(const char *name);
 
+const char *GetTestTempDirectory();
+
+extern const char *testTempDirectory;
+

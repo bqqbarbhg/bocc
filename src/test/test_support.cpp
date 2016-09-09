@@ -1,7 +1,10 @@
 #include "prelude.h"
 #include "test_support.h"
+#include "os/filesystem.h"
 #include <string.h>
 #include <stdint.h>
+
+const char *testTempDirectory = NULL;
 
 static test_case *g_testCases[1024];
 static uint32_t g_numTestCases = 0;
@@ -36,4 +39,9 @@ int RunTestCase(const char *name)
 	return 1;
 }
 
+const char *GetTestTempDirectory()
+{
+	CreateFolderSimple(testTempDirectory);
+	return testTempDirectory;
+}
 
