@@ -19,12 +19,12 @@ int main(int argc, char **argv)
 #if defined(OS_WINDOWS)
 	{
 		char *selfEnd = strrchr(argv[0], '\\');
-		sprintf(testDirectory, "%.*s\\testout\\", selfEnd - argv[0], argv[0]);
+		sprintf(testDirectory, "%.*s\\testout\\", (long)(selfEnd - argv[0]), argv[0]);
 	}
 #elif defined(OS_LINUX)
 	{
 		char *selfEnd = strrchr(argv[0], '/');
-		sprintf(testDirectory, "%.*s/testout/", selfEnd - argv[0], argv[0]);
+		sprintf(testDirectory, "%.*s/testout/", (long)(selfEnd - argv[0]), argv[0]);
 	}
 #endif
 
