@@ -1,18 +1,18 @@
 #pragma once
 
-void WriteAligned16LE(void *ptr, uint16_t value)
+inline void WriteAligned16LE(void *ptr, uint16_t value)
 {
 	Assert((uintptr_t)ptr % 2 == 0);
 	*(uint16_t*)ptr = value;
 }
 
-void WriteAligned32LE(void *ptr, uint32_t value)
+inline void WriteAligned32LE(void *ptr, uint32_t value)
 {
 	Assert((uintptr_t)ptr % 4 == 0);
 	*(uint32_t*)ptr = value;
 }
 
-void WriteAligned64LE(void *ptr, uint64_t value)
+inline void WriteAligned64LE(void *ptr, uint64_t value)
 {
 	Assert((uintptr_t)ptr % 8 == 0);
 	*(uint64_t*)ptr = value;

@@ -554,7 +554,6 @@ TestCase(ExperimentWriteSimplePE)
 
 	char path[256];
 	sprintf(path, "%stestbeep.exe", GetTestTempDirectory());
-
 	FILE *outf = fopen(path, "wb");
 
 	fwrite(buffer, 1, fileSize, outf);
