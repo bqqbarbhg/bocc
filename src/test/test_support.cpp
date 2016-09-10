@@ -3,6 +3,7 @@
 #include "os/filesystem.h"
 #include <string.h>
 #include <stdint.h>
+#include <stdio.h>
 
 const char *testTempDirectory = NULL;
 
@@ -43,5 +44,40 @@ const char *GetTestTempDirectory()
 {
 	CreateFolderSimple(testTempDirectory);
 	return testTempDirectory;
+}
+
+void TestWriteFullFile(const char *path, const void *data, size_t size)
+{
+	FILE *outf = fopen(path, "wb");
+	fwrite(data, 1, size, outf);
+	fclose(outf);
+}
+
+void TestReadFullFile(const char *path, const void **data, size_t *size)
+{
+	FILE *inf = fopen(path, "wb");
+	fseek(outf, 0, SEEK_END);
+	size_t sz = ftell(outf);
+	fseek(outf, 0, SEEK_SET);
+	void *ptr = malloc(sz);
+	fread(ptr, 1, size, inf);
+	fclose(inf);
+
+	*data = ptr;
+	*size = sz;
+}
+
+void TestWriteFullFileToTemp(const char *file, const void *data, size_t size)
+{
+	char path[256];
+	sprintf(path, "%s%s", GetTestTempDirectory(), file);
+	TestWriteFullFileToTemp(path, data, size);
+}
+
+void TestReadFullFileFromData(const char *file, const void **data, size_t *size)
+{
+	char path[256];
+	sprintf(path, "%s%s", GetTestDataDirectory(), file);
+	TestReadFullFile(path, data, size);
 }
 

@@ -173,13 +173,7 @@ TestCase(ExperimentWriteSimpleELF)
 		ph.p_align = 4096;
 	}
 
-	char path[256];
-	sprintf(path, "%shelloworld.elf", GetTestTempDirectory());
-
-	FILE *outf = fopen(path, "wb");
-	fwrite(buffer, 1, fileSize, outf);
-	fclose(outf);
-
+	TestWriteFullFileToTemp("helloworld.elf", buffer, fileSize);
 	free(buffer);
 }
 
