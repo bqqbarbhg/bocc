@@ -336,13 +336,11 @@ void ReadCoffObject(obj_file *obj, const char *fileData, size_t fileSize)
 	obj->NumSections = nsec;
 
 	obj->Symbols = (obj_symbol*)calloc(sizeof(obj_symbol), nsym);
-	uint32_t symOut = 0;
 
 	for (uint32_t i = 0; i < nsym; i++)
 	{
-		obj_symbol *osy = &obj->Symbols[symOut];
+		obj_symbol *osy = &obj->Symbols[i];
 		const coff_symbol *csy = &symbolTable[i];
-		symOut++;
 
 		if (csy->Name.Long.Zeroes == 0)
 		{
@@ -360,9 +358,19 @@ void ReadCoffObject(obj_file *obj, const char *fileData, size_t fileSize)
 			osy->Name = AllocStrLen(name, len);
 		}
 
-		i += csy->NumberOfAuxSymbols;
+		for (int j = 0; j < csy->NumberOfAuxSymbols; j++)
+		{
+			i++;
+
+			obj_symbol *aux = &obj->Symbols[i];
+			aux->Name = "";
+			aux->Address = 0;
+			aux->DefinedInSection = 0;
+			aux->Flags = 0;
+		}
+
 		uint32_t flags = 0;
-		uint32_t sec = csy->SectionNumber;
+		int32_t sec = (int16_t)csy->SectionNumber;
 		if (sec > 0)
 		{
 			osy->DefinedInSection = sec - 1;
@@ -371,6 +379,7 @@ void ReadCoffObject(obj_file *obj, const char *fileData, size_t fileSize)
 		}
 		else
 		{
+			osy->DefinedInSection = 0;
 			osy->Address = 0;
 		}
 
@@ -381,7 +390,7 @@ void ReadCoffObject(obj_file *obj, const char *fileData, size_t fileSize)
 
 		osy->Flags = flags;
 	}
-	obj->NumSymbols = symOut;
+	obj->NumSymbols = nsym;
 
 	for (uint32_t secI = 0; secI < nsec; secI++)
 	{
@@ -409,20 +418,20 @@ void ReadCoffObject(obj_file *obj, const char *fileData, size_t fileSize)
 					break;
 			}
 			sec->Name = AllocStrLen((const char*)sh->Name, len);
-			sec->VirtualAddress = sh->VirtualAddress;
-			sec->VirtualSize = sh->Misc.VirtualSize;
-			uint32_t dataSize = sh->SizeOfRawData;
-			sec->DataSize = dataSize;
-			sec->VirtualSize = dataSize;
-			if (dataSize > 0)
-			{
-				sec->Data = malloc(dataSize);
-				memcpy(sec->Data, fileData + sh->PointerToRawData, dataSize);
-			}
+		}
+
+		sec->VirtualAddress = sh->VirtualAddress;
+		sec->VirtualSize = sh->Misc.VirtualSize;
+		uint32_t dataSize = sh->SizeOfRawData;
+		sec->DataSize = dataSize;
+		sec->VirtualSize = dataSize;
+		if (dataSize > 0)
+		{
+			sec->Data = malloc(dataSize);
+			memcpy(sec->Data, fileData + sh->PointerToRawData, dataSize);
 		}
 
 		sec->VirtualAlignment = 0;
-
 		uint32_t coffFlags = sh->Characteristics;
 		uint32_t alignment = (coffFlags >> 5*4) & 0xF;
 		sec->VirtualAlignment = 1 << (alignment - 1);
@@ -614,7 +623,6 @@ struct link_input
 
 	uint32_t ImageBase;
 	const char *EntryPointName;
-	uint32_t FileAlignment;
 };
 
 struct link_output
@@ -752,6 +760,9 @@ void CreateDllObject(obj_file *obj, const obj_dll_import *imports, uint32_t numI
 		secText->Data = calloc(1024,1024);
 		secText->Flags = SectionRead|SectionExecute|SectionHasCode;
 
+		*(uint8_t*)secText->Data = 0xCC;
+		secText->DataSize = 1;
+
 		char buf[128];
 
 		uint32_t idtRelocNum = 0;
@@ -846,15 +857,16 @@ void CreateDllObject(obj_file *obj, const obj_dll_import *imports, uint32_t numI
 				obj->Symbols[numSym].Flags = ObjSymbolDefine|ObjSymbolExternal;
 
 				uint8_t *text = (uint8_t*)secText->Data + secText->DataSize;
-				*text = 0xE9;
+				text[0] = 0xFF;
+				text[1] = 0x25;
 
 				{
 					obj_relocation *rl = secText->Relocations + secText->NumRelocations;
 					secText->NumRelocations++;
 
-					rl->Address = secText->DataSize + 1;
+					rl->Address = secText->DataSize + 2;
 					rl->SymbolIndex = numSym;
-					rl->Type = IMAGE_REL_AMD64_REL32_4;
+					rl->Type = IMAGE_REL_AMD64_REL32;
 
 					obj->Symbols[numSym + 1].Name = AllocStrZero(imp->SymbolName);
 					obj->Symbols[numSym + 1].Address = secText->DataSize;
@@ -862,7 +874,7 @@ void CreateDllObject(obj_file *obj, const obj_dll_import *imports, uint32_t numI
 					obj->Symbols[numSym + 1].Flags = ObjSymbolDefine|ObjSymbolExternal;
 				}
 
-				secText->DataSize += 5;
+				secText->DataSize += 6;
 
 				numSym += 2;
 
@@ -1005,7 +1017,7 @@ uint32_t WriteCoffObject(const obj_file *obj, void *dataVoid, size_t dataSize)
 			opt->SizeOfImage = AlignValue(imageSize, opt->SectionAlignment);
 			opt->SizeOfHeaders = 1024;
 			opt->CheckSum = 0;
-			opt->Subsystem = 3;
+			opt->Subsystem = 2;
 			opt->DllCharacteristics = 0;
 		}
 
@@ -1107,16 +1119,12 @@ uint32_t WriteCoffObject(const obj_file *obj, void *dataVoid, size_t dataSize)
 			flags |= alignmentField << 5*4;
 		}
 
-		if (obj->FileType != ObjFileExecutable)
-		{
-			if (sec->Flags & SectionHasCode)
-				flags |= IMAGE_SCN_CNT_CODE;
-			if (sec->Flags & SectionHasData)
-				flags |= IMAGE_SCN_CNT_INITIALIZED_DATA;
-			if (sec->Flags & SectionHasZeroes)
-				flags |= IMAGE_SCN_CNT_UNINITIALIZED_DATA;
-		}
-
+		if (sec->Flags & SectionHasCode)
+			flags |= IMAGE_SCN_CNT_CODE;
+		if (sec->Flags & SectionHasData)
+			flags |= IMAGE_SCN_CNT_INITIALIZED_DATA;
+		if (sec->Flags & SectionHasZeroes)
+			flags |= IMAGE_SCN_CNT_UNINITIALIZED_DATA;
 		if (sec->Flags & SectionNoLink)
 			flags |= IMAGE_SCN_LNK_REMOVE;
 		if (sec->Flags & SectionExecute)
@@ -1252,7 +1260,7 @@ void Link(link_output *output, const link_input *input)
 
 					if (os->Flags & ObjSymbolDefine)
 					{
-						// Assert(ext->DefiningObj == NULL);
+						Assert(ext->DefiningObj == NULL || ext->DefiningObj->ObjFile->FileType == ObjFileImport);
 						ext->DefiningObj = lobj;
 					}
 
@@ -1327,13 +1335,6 @@ arc_sym_found: {}
 		}
 	}
 
-	if (1)
-	{
-		void *linkCoff = calloc(1024, 1024);
-		uint32_t linkCoffSz = WriteCoffObject(&genDllObjFile, linkCoff, 1024*1024);
-		TestWriteFullFileToTemp("genlink.obj", linkCoff, linkCoffSz);
-	}
-
 	link_final_section *finalSections = (link_final_section*)calloc(sizeof(link_final_section), 1024);
 	uint32_t numFinalSections = 0;
 
@@ -1350,15 +1351,6 @@ arc_sym_found: {}
 			uint32_t nameLen = 0;
 			while (sec->Name[nameLen] != '$' && sec->Name[nameLen] != '\0')
 				nameLen++;
-
-			if (!memcmp(sec->Name, ".deb", 4))
-				continue;
-			if (!memcmp(sec->Name, ".sup", 4))
-				continue;
-			if (!memcmp(sec->Name, ".pda", 4))
-				continue;
-			if (!memcmp(sec->Name, ".xda", 4))
-				continue;
 
 			link_final_section *fsec = NULL;
 			for (uint32_t i = 0; i < numFinalSections; i++)
@@ -1383,7 +1375,7 @@ arc_sym_found: {}
 			}
 			else
 			{
-				// Assert(fsec->Flags == sec->Flags);
+				Assert(fsec->Flags == sec->Flags);
 			}
 
 			fsec->Sections[fsec->NumSections] = lsec;
@@ -1428,12 +1420,17 @@ arc_sym_found: {}
 
 		uint32_t pos = 0;
 
+		uint8_t fillByte = sec->Flags & SectionHasCode ? 0xCC : 0x00;
+
 		for (uint32_t secI = 0; secI < fsec->NumSections; secI++)
 		{
 			link_section *lins = fsec->Sections[secI];
 			const obj_section *ins = lins->ObjSection;
 
-			pos = AlignValue(pos, ins->VirtualAlignment);
+			uint32_t newPos = AlignValue(pos, ins->VirtualAlignment);
+			memset(data + pos, fillByte, newPos - pos);
+			pos = newPos;
+
 			lins->OffsetInSection = pos;
 			lins->VirtualAddress = virtualAddress + pos;
 
@@ -1465,9 +1462,25 @@ arc_sym_found: {}
 					externs[lsym->ExternIndex].VirtualAddress = lsym->VirtualAddress;
 				}
 			}
-			else if (sym->Flags & ObjSymbolExternal)
+		}
+	}
+
+	for (uint32_t objI = 0; objI < numLinkObjects; objI++)
+	{
+		link_obj *lobj = &linkObjects[objI];
+		const obj_file *obj = lobj->ObjFile;
+
+		for (uint32_t symI = 0; symI < obj->NumSymbols; symI++)
+		{
+			const obj_symbol *sym = &obj->Symbols[symI];
+			link_symbol *lsym  = &lobj->Symbols[symI];
+
+			if (!(sym->Flags & ObjSymbolDefine))
 			{
-				lsym->VirtualAddress = externs[lsym->ExternIndex].VirtualAddress;
+				if (sym->Flags & ObjSymbolExternal)
+				{
+					lsym->VirtualAddress = externs[lsym->ExternIndex].VirtualAddress;
+				}
 			}
 		}
 	}
@@ -1502,22 +1515,22 @@ arc_sym_found: {}
 						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + lsym->VirtualAddress;
 						break;
 					case IMAGE_REL_AMD64_REL32:
-						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - lins->VirtualAddress + reloc->Address);
-						break;
-					case IMAGE_REL_AMD64_REL32_1:
-						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 1));
-						break;
-					case IMAGE_REL_AMD64_REL32_2:
-						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 2));
-						break;
-					case IMAGE_REL_AMD64_REL32_3:
-						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 3));
-						break;
-					case IMAGE_REL_AMD64_REL32_4:
 						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4));
 						break;
+					case IMAGE_REL_AMD64_REL32_1:
+						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 1));
+						break;
+					case IMAGE_REL_AMD64_REL32_2:
+						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 2));
+						break;
+					case IMAGE_REL_AMD64_REL32_3:
+						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 3));
+						break;
+					case IMAGE_REL_AMD64_REL32_4:
+						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 4));
+						break;
 					case IMAGE_REL_AMD64_REL32_5:
-						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 5));
+						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 5));
 						break;
 					case IMAGE_REL_AMD64_SECTION:
 						// TODO
@@ -1541,6 +1554,7 @@ arc_sym_found: {}
 		for (uint32_t symI = 0; symI < objf->NumSymbols; symI++)
 		{
 			obj_symbol *sym = &objf->Symbols[symI];
+
 			if (!strcmp(sym->Name, input->EntryPointName))
 			{
 				obj->FilePointers[ObjFilePointerToEntryPoint].VirtualAddress = lobj->Symbols[symI].VirtualAddress;
@@ -1556,29 +1570,6 @@ arc_sym_found: {}
 			}
 		}
 	}
-
-	{
-		void *exeCoff = calloc(1024, 1024);
-		uint32_t exeCoffSz = WriteCoffObject(obj, exeCoff, 1024*1024);
-		TestWriteFullFileToTemp("test.exe", exeCoff, exeCoffSz);
-	}
-
-	printf("External symbols:\n");
-	for (uint32_t exI = 0; exI < numExterns; exI++)
-	{
-		link_extern *ext = &externs[exI];
-		const char *defName = "(unresolved)";
-		if (ext->DefiningObj != NULL)
-			defName = ext->DefiningObj->ObjFile->Name;
-
-		printf("  %s: %s\n", ext->Name, defName);
-	}
-	printf("DLL imports:\n");
-	for (uint32_t dlI = 0; dlI < numDllImports; dlI++)
-	{
-		obj_dll_import *dl = &genDllImports[dlI];
-		printf("  %s: %s (%s:%d)\n", dl->SymbolName, dl->DllName, dl->ImportName, dl->Hint);
-	}
 }
 
 TestCase(ExperimentLinkWin32)
@@ -1593,8 +1584,8 @@ TestCase(ExperimentLinkWin32)
 		size_t fileSize;
 
 		TestReadFullFileFromData("freestanding/crt.obj", (void**)&fileData, &fileSize);
-		ReadCoffObject(&crtObj, fileData, fileSize);
 		crtObj.Name = "freestanding/crt.obj";
+		ReadCoffObject(&crtObj, fileData, fileSize);
 
 		free(fileData);
 	}
@@ -1604,8 +1595,8 @@ TestCase(ExperimentLinkWin32)
 		size_t fileSize;
 
 		TestReadFullFileFromData("freestanding/main.obj", (void**)&fileData, &fileSize);
-		ReadCoffObject(&mainObj, fileData, fileSize);
 		mainObj.Name = "freestanding/main.obj";
+		ReadCoffObject(&mainObj, fileData, fileSize);
 
 		free(fileData);
 	}
@@ -1651,8 +1642,13 @@ TestCase(ExperimentLinkWin32)
 	lin.NumArchives = ArrayCount(larcs);
 	lin.ImageBase = 0x00400000;
 	lin.EntryPointName = "mainCRTStartup";
-	lin.FileAlignment = 512;
 
 	Link(&lout, &lin);
+
+	{
+		void *exeCoff = calloc(1024, 1024);
+		uint32_t exeCoffSz = WriteCoffObject(&out, exeCoff, 1024*1024);
+		TestWriteFullFileToTemp("test.exe", exeCoff, exeCoffSz);
+	}
 }
 
