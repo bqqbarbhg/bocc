@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 char testDirectory[256];
+char dataDirectory[256];
 
 int main(int argc, char **argv)
 {
@@ -20,15 +21,18 @@ int main(int argc, char **argv)
 	{
 		char *selfEnd = strrchr(argv[0], '\\');
 		sprintf(testDirectory, "%.*s\\testout\\", (int)(selfEnd - argv[0]), argv[0]);
+		sprintf(dataDirectory, "%.*s\\..\\..\\data\\", (int)(selfEnd - argv[0]), argv[0]);
 	}
 #elif defined(OS_LINUX)
 	{
 		char *selfEnd = strrchr(argv[0], '/');
 		sprintf(testDirectory, "%.*s/testout/", (int)(selfEnd - argv[0]), argv[0]);
+		sprintf(dataDirectory, "%.*s/../../data/", (int)(selfEnd - argv[0]), argv[0]);
 	}
 #endif
 
 	testTempDirectory = testDirectory;
+	testDataDirectory = dataDirectory;
 
 	if (!strcmp(argv[1], "list"))
 	{

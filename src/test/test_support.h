@@ -26,10 +26,11 @@ int RunTestCase(const char *name);
 const char *GetTestTempDirectory();
 
 extern const char *testTempDirectory;
+extern const char *testDataDirectory;
 
 void TestWriteFullFile(const char *path, const void *data, size_t size);
-void TestReadFullFile(const char *path, const void **data, size_t *size);
+void TestReadFullFile(const char *path, void **data, size_t *size);
 
 void TestWriteFullFileToTemp(const char *file, const void *data, size_t size);
-void TestReadFullFileFromData(const char *file, const void **data, size_t *size);
+void TestReadFullFileFromData(const char *file, void **data, size_t *size);
 

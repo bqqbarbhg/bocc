@@ -1,4 +1,5 @@
 #include "prelude.h"
+#include "test/experiment/coff_defs.h"
 #include "base/core/endian.h"
 #include "base/math/bit_math.h"
 #include <string.h>

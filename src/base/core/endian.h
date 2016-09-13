@@ -28,7 +28,7 @@ struct uint16_le
 		return *this;
 	}
 
-	operator uint16_t()
+	operator uint16_t() const
 	{
 		return InnerValue;
 	}
@@ -44,7 +44,7 @@ struct uint32_le
 		return *this;
 	}
 
-	operator uint32_t()
+	operator uint32_t() const
 	{
 		return InnerValue;
 	}
@@ -60,9 +60,57 @@ struct uint64_le
 		return *this;
 	}
 
-	operator uint64_t()
+	operator uint64_t() const
 	{
 		return InnerValue;
+	}
+};
+
+struct uint16_unalgined_le
+{
+	uint8_t Bytes[2];
+
+	uint16_unalgined_le& operator=(uint16_t val)
+	{
+		*(uint16_t*)Bytes = val;
+		return *this;
+	}
+
+	operator uint16_t() const
+	{
+		return *(uint16_t*)Bytes;
+	}
+};
+
+struct uint32_unalgined_le
+{
+	uint8_t Bytes[4];
+
+	uint32_unalgined_le& operator=(uint32_t val)
+	{
+		*(uint32_t*)Bytes = val;
+		return *this;
+	}
+
+	operator uint32_t() const
+	{
+		return *(uint32_t*)Bytes;
+	}
+};
+
+struct uint64_unalgined_le
+{
+	uint8_t Bytes[8];
+
+	uint64_unalgined_le& operator=(uint64_t val)
+	{
+		*(uint64_t*)Bytes = val;
+		return *this;
+	}
+
+	operator uint64_t() const
+	{
+		return *(uint64_t*)Bytes;
 	}
 };
 

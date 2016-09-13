@@ -42,6 +42,18 @@ struct coff_file_header
 	uint16_le Characteristics;
 };
 
+struct coff_import_header
+{
+	uint16_le Sig1;
+	uint16_le Sig2;
+	uint16_le Version;
+	uint16_le Machine;
+	uint32_le TimeDateStamp;
+	uint32_le SizeOfData;
+	uint16_le OrdinalOrHint;
+	uint16_le Type;
+};
+
 struct coff_optional_header0
 {
 	uint16_le Magic;
@@ -131,3 +143,28 @@ struct coff_import_directory_table
 	uint32_le ImportAddressRva;
 };
 
+struct coff_symbol
+{
+	union
+	{
+		struct 
+		{
+			uint32_unalgined_le Zeroes;
+			uint32_unalgined_le StringIndex;
+		} Long;
+		uint8_t Short[8];
+	} Name;
+
+	uint32_unalgined_le Value;
+	uint16_unalgined_le SectionNumber;
+	uint16_unalgined_le Type;
+	uint8_t StorageClass;
+	uint8_t NumberOfAuxSymbols;
+};
+
+struct coff_relocation
+{
+	uint32_unalgined_le VirtualAddress;
+	uint32_unalgined_le SymbolTableIndex;
+	uint16_unalgined_le Type;
+};

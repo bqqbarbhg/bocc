@@ -6,6 +6,7 @@
 #include <stdio.h>
 
 const char *testTempDirectory = NULL;
+const char *testDataDirectory = NULL;
 
 static test_case *g_testCases[1024];
 static uint32_t g_numTestCases = 0;
@@ -46,6 +47,11 @@ const char *GetTestTempDirectory()
 	return testTempDirectory;
 }
 
+const char *GetTestDataDirectory()
+{
+	return testDataDirectory;
+}
+
 void TestWriteFullFile(const char *path, const void *data, size_t size)
 {
 	FILE *outf = fopen(path, "wb");
@@ -53,14 +59,14 @@ void TestWriteFullFile(const char *path, const void *data, size_t size)
 	fclose(outf);
 }
 
-void TestReadFullFile(const char *path, const void **data, size_t *size)
+void TestReadFullFile(const char *path, void **data, size_t *size)
 {
-	FILE *inf = fopen(path, "wb");
-	fseek(outf, 0, SEEK_END);
-	size_t sz = ftell(outf);
-	fseek(outf, 0, SEEK_SET);
+	FILE *inf = fopen(path, "rb");
+	fseek(inf, 0, SEEK_END);
+	size_t sz = ftell(inf);
+	fseek(inf, 0, SEEK_SET);
 	void *ptr = malloc(sz);
-	fread(ptr, 1, size, inf);
+	fread(ptr, 1, sz, inf);
 	fclose(inf);
 
 	*data = ptr;
@@ -71,10 +77,10 @@ void TestWriteFullFileToTemp(const char *file, const void *data, size_t size)
 {
 	char path[256];
 	sprintf(path, "%s%s", GetTestTempDirectory(), file);
-	TestWriteFullFileToTemp(path, data, size);
+	TestWriteFullFile(path, data, size);
 }
 
-void TestReadFullFileFromData(const char *file, const void **data, size_t *size)
+void TestReadFullFileFromData(const char *file, void **data, size_t *size)
 {
 	char path[256];
 	sprintf(path, "%s%s", GetTestDataDirectory(), file);
