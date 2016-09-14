@@ -264,7 +264,7 @@ void ReadCoffObject(obj_file *obj, const char *fileData, size_t fileSize)
 {
 	const coff_file_header *fileHeader = (const coff_file_header*)(fileData + 0);
 
-	if (fileHeader->Machine == 0x0000 && fileHeader->NumberOfSections == 0xFFFF)
+	if (LoadLE16(&fileHeader->Machine) == 0x0000 && LoadLE16(&fileHeader->NumberOfSections) == 0xFFFF)
 	{
 		const coff_import_header *importHeader = (const coff_import_header*)fileHeader;
 		obj->DllImports = (obj_dll_import*)calloc(sizeof(obj_dll_import), 1);
@@ -282,12 +282,12 @@ void ReadCoffObject(obj_file *obj, const char *fileData, size_t fileSize)
 		size_t dllNameLen = strlen(ptr);
 		ptr += dllNameLen + 1;
 
-		uint16_t type = importHeader->Type;
+		uint16_t type = LoadLE16(&importHeader->Type);
 		uint32_t nameType = (type >> 2) & 0x7;
 
 		imp->DllName = AllocStrLen(dllName, dllNameLen);
 		imp->SymbolName = AllocStrLen(symName, symNameLen);
-		imp->Hint = importHeader->OrdinalOrHint;
+		imp->Hint = LoadLE16(&importHeader->OrdinalOrHint);
 
 		switch (nameType)
 		{
@@ -324,11 +324,11 @@ void ReadCoffObject(obj_file *obj, const char *fileData, size_t fileSize)
 
 	obj->FileType = ObjFileObject;
 
-	uint32_t nsec = fileHeader->NumberOfSections;
+	uint32_t nsec = LoadLE16(&fileHeader->NumberOfSections);
 	const coff_section_header *sectionHeaders = (const coff_section_header*)(fileData + sizeof(coff_file_header));
 
-	uint32_t nsym = fileHeader->NumberOfSymbols;
-	const coff_symbol *symbolTable = (const coff_symbol*)(fileData + fileHeader->PointerToSymbolTable);
+	uint32_t nsym = LoadLE32(&fileHeader->NumberOfSymbols);
+	const coff_symbol *symbolTable = (const coff_symbol*)(fileData + LoadLE32(&fileHeader->PointerToSymbolTable));
 
 	char *strtab = (char*)symbolTable + nsym * sizeof(coff_symbol);
 
@@ -342,9 +342,9 @@ void ReadCoffObject(obj_file *obj, const char *fileData, size_t fileSize)
 		obj_symbol *osy = &obj->Symbols[i];
 		const coff_symbol *csy = &symbolTable[i];
 
-		if (csy->Name.Long.Zeroes == 0)
+		if (LoadLE32U(&csy->Name.Long.Zeroes) == 0)
 		{
-			osy->Name = AllocStrZero(strtab + csy->Name.Long.StringIndex);
+			osy->Name = AllocStrZero(strtab + LoadLE32U(&csy->Name.Long.StringIndex));
 		}
 		else
 		{
@@ -370,11 +370,11 @@ void ReadCoffObject(obj_file *obj, const char *fileData, size_t fileSize)
 		}
 
 		uint32_t flags = 0;
-		int32_t sec = (int16_t)csy->SectionNumber;
+		int32_t sec = (int16_t)LoadLE16U(&csy->SectionNumber);
 		if (sec > 0)
 		{
 			osy->DefinedInSection = sec - 1;
-			osy->Address = csy->Value;
+			osy->Address = LoadLE32U(&csy->Value);
 			flags |= ObjSymbolDefine;
 		}
 		else
@@ -420,19 +420,19 @@ void ReadCoffObject(obj_file *obj, const char *fileData, size_t fileSize)
 			sec->Name = AllocStrLen((const char*)sh->Name, len);
 		}
 
-		sec->VirtualAddress = sh->VirtualAddress;
-		sec->VirtualSize = sh->Misc.VirtualSize;
-		uint32_t dataSize = sh->SizeOfRawData;
+		sec->VirtualAddress = LoadLE32(&sh->VirtualAddress);
+		sec->VirtualSize = LoadLE32(&sh->Misc.VirtualSize);
+		uint32_t dataSize = LoadLE32(&sh->SizeOfRawData);
 		sec->DataSize = dataSize;
 		sec->VirtualSize = dataSize;
 		if (dataSize > 0)
 		{
 			sec->Data = malloc(dataSize);
-			memcpy(sec->Data, fileData + sh->PointerToRawData, dataSize);
+			memcpy(sec->Data, fileData + LoadLE32(&sh->PointerToRawData), dataSize);
 		}
 
 		sec->VirtualAlignment = 0;
-		uint32_t coffFlags = sh->Characteristics;
+		uint32_t coffFlags = LoadLE32(&sh->Characteristics);
 		uint32_t alignment = (coffFlags >> 5*4) & 0xF;
 		sec->VirtualAlignment = 1 << (alignment - 1);
 
@@ -456,25 +456,25 @@ void ReadCoffObject(obj_file *obj, const char *fileData, size_t fileSize)
 		uint32_t numReloc;
 		if (coffFlags & IMAGE_SCN_LNK_NRELOC_OVFL)
 		{
-			numReloc = sh->VirtualAddress;
+			numReloc = LoadLE32(&sh->VirtualAddress);
 			sec->VirtualAddress = 0;
 		}
 		else
 		{
-			numReloc = sh->NumberOfRelocations;
+			numReloc = LoadLE16(&sh->NumberOfRelocations);
 		}
 
 		sec->NumRelocations = numReloc;
 		if (numReloc > 0)
 		{
-			const coff_relocation *cr = (coff_relocation*)(fileData + sh->PointerToRelocations);
+			const coff_relocation *cr = (coff_relocation*)(fileData + LoadLE32(&sh->PointerToRelocations));
 			sec->Relocations = (obj_relocation*)malloc(sizeof(obj_relocation) * numReloc);
 			for (uint32_t i = 0; i < numReloc; i++)
 			{
 				obj_relocation *obr = &sec->Relocations[i];
-				obr->Address = cr[i].VirtualAddress;
-				obr->SymbolIndex = cr[i].SymbolTableIndex;
-				obr->Type = cr[i].Type;
+				obr->Address = LoadLE32U(&cr[i].VirtualAddress);
+				obr->SymbolIndex = LoadLE32U(&cr[i].SymbolTableIndex);
+				obr->Type = LoadLE16U(&cr[i].Type);
 			}
 		}
 		else
@@ -526,7 +526,7 @@ void ReadCoffArchive(obj_archive *arc, const char *fileData, size_t fileSize)
 				else if (linkerMemberIndex == 1)
 				{
 					const char *memPtr = memData;
-					uint32_t numMembers = *(uint32_unalgined_le*)memPtr;
+					uint32_t numMembers = LoadLE32UV(memPtr);
 					memPtr += 4;
 					memPtr += 4 * numMembers;
 
@@ -536,10 +536,10 @@ void ReadCoffArchive(obj_archive *arc, const char *fileData, size_t fileSize)
 						arcCapacity = numMembers;
 					}
 
-					uint32_t numSym = *(uint32_unalgined_le*)memPtr;
+					uint32_t numSym = LoadLE32UV(memPtr);
 					memPtr += 4;
 
-					uint16_unalgined_le *indexPtr = (uint16_unalgined_le*)memPtr;
+					uint16_unaligned_le *indexPtr = (uint16_unaligned_le*)memPtr;
 					const char *strPtr = memPtr + 2 * numSym;
 
 					arc->Symbols = (obj_archive_symbol*)malloc(sizeof(obj_archive_symbol) * numSym);
@@ -551,7 +551,7 @@ void ReadCoffArchive(obj_archive *arc, const char *fileData, size_t fileSize)
 						arc->Symbols[i].Name = AllocStrLen(strPtr, len);
 						strPtr += len + 1;
 
-						arc->Symbols[i].MemberIndex = indexPtr[i] - 1;
+						arc->Symbols[i].MemberIndex = LoadLE16U(&indexPtr[i]) - 1;
 					}
 				}
 				else
@@ -597,10 +597,16 @@ void ReadCoffArchive(obj_archive *arc, const char *fileData, size_t fileSize)
 				memset(arcMem, 0, (arcCapacity - arcCount) * sizeof(obj_archive_member));
 			}
 
+			// Required for alignment!!
+			char *memTemp = (char*)malloc(memSize);
+			memcpy(memTemp, memData, memSize);
+
 			obj_archive_member *mem = &arcMem[arcCount];
 			mem->Name = memName;
-			ReadCoffObject(&mem->ObjectFile, memData, memSize);
+			ReadCoffObject(&mem->ObjectFile, memTemp, memSize);
 			mem->ObjectFile.Name = AllocStrZero(memName);
+
+			free(memTemp);
 
 			arcCount++;
 		}
@@ -836,7 +842,7 @@ void CreateDllObject(obj_file *obj, const obj_dll_import *imports, uint32_t numI
 					uint32_t nameLen = (uint32_t)strlen(imp->ImportName) + 1;
 					char *hnt = (char*)secHnt->Data + secHnt->DataSize;
 					uint16_le *hint = (uint16_le*)hnt;
-					*hint = imp->Hint;
+					StoreLE16(hint, imp->Hint);
 
 					memcpy(hnt + 2, imp->ImportName, nameLen);
 
@@ -847,7 +853,7 @@ void CreateDllObject(obj_file *obj, const obj_dll_import *imports, uint32_t numI
 				else
 				{
 					uint64_le *ilt = (uint64_le*)((char*)secIlt->Data + secIlt->DataSize);
-					*ilt = 1ULL << 63 | imp->Hint;
+					StoreLE64(ilt, 1ULL << 63 | imp->Hint);
 				}
 
 				sprintf(buf, "__imp_%s", imp->ImportName);
@@ -936,7 +942,7 @@ uint32_t WriteCoffObject(const obj_file *obj, void *dataVoid, size_t dataSize)
 		pe_dos_header *dh = (pe_dos_header*)pos;
 		dh->signature[0] = 'M';
 		dh->signature[1] = 'Z';
-		dh->e_lfanew = peOffset;
+		StoreLE32(&dh->e_lfanew, peOffset);
 
 		pos += peOffset;
 
@@ -946,17 +952,17 @@ uint32_t WriteCoffObject(const obj_file *obj, void *dataVoid, size_t dataSize)
 
 	coff_file_header *fh = (coff_file_header*)pos;
 	pos += sizeof(coff_file_header);
-	fh->Machine = 0x8664;
-	fh->NumberOfSections = obj->NumSections;
-	fh->TimeDateStamp = (uint32_t)time(NULL);
-	fh->NumberOfSymbols = obj->NumSymbols;
+	StoreLE16(&fh->Machine, 0x8664);
+	StoreLE16(&fh->NumberOfSections, obj->NumSections);
+	StoreLE32(&fh->TimeDateStamp, (uint32_t)time(NULL));
+	StoreLE32(&fh->NumberOfSymbols, obj->NumSymbols);
 
 	uint32_t fileAlignment = obj->FileType == ObjFileExecutable ? 512 : 1;
 
 	if (obj->FileType == ObjFileExecutable)
 	{
-		fh->SizeOfOptionalHeader = 112 + 16 * 8;
-		fh->Characteristics = 0x0001 | 0x0002 | 0x0020;
+		StoreLE16(&fh->SizeOfOptionalHeader, 112 + 16 * 8);
+		StoreLE16(&fh->Characteristics, 0x0001 | 0x0002 | 0x0020);
 
 		uint32_t baseOfCode = ~0;
 		uint32_t sizeOfCode = 0;
@@ -986,68 +992,69 @@ uint32_t WriteCoffObject(const obj_file *obj, void *dataVoid, size_t dataSize)
 		{
 			coff_optional_header0 *opt = (coff_optional_header0*)pos;
 			pos += sizeof(coff_optional_header0);
-			opt->Magic = 0x20b;
+			StoreLE16(&opt->Magic, 0x20b);
 			opt->MajorLinkerVersion = 11;
 			opt->MinorLinkerVersion = 0;
-			opt->SizeOfCode = sizeOfCode;
-			opt->SizeOfInitializedData = sizeOfInitializedData;
-			opt->SizeOfUninitializedData = sizeOfUnitializedData;
-			opt->AddressOfEntryPoint = obj->FilePointers[ObjFilePointerToEntryPoint].VirtualAddress;
-			opt->BaseOfCode = baseOfCode;
+			StoreLE32(&opt->SizeOfCode, sizeOfCode);
+			StoreLE32(&opt->SizeOfInitializedData, sizeOfInitializedData);
+			StoreLE32(&opt->SizeOfUninitializedData, sizeOfUnitializedData);
+			StoreLE32(&opt->AddressOfEntryPoint, obj->FilePointers[ObjFilePointerToEntryPoint].VirtualAddress);
+			StoreLE32(&opt->BaseOfCode, baseOfCode);
 		}
 
 		{
 			coff_optional_header1_64 *opt = (coff_optional_header1_64*)pos;
 			pos += sizeof(coff_optional_header1_64);
-			opt->ImageBase = obj->ImageBase;
+			StoreLE64(&opt->ImageBase, obj->ImageBase);
 		}
 
 		{
 			coff_optional_header2 *opt = (coff_optional_header2*)pos;
 			pos += sizeof(coff_optional_header2);
-			opt->SectionAlignment = 4096;
-			opt->FileAlignment = fileAlignment;
-			opt->MajorOperatingSystemVersion = 6;
-			opt->MinorOperatingSystemVersion = 0;
-			opt->MajorImageVersion = 0;
-			opt->MinorImageVersion = 0;
-			opt->MajorSubsystemVersion = 6;
-			opt->MinorSubsystemVersion = 0;
-			opt->Win32VersionValue = 0;
-			opt->SizeOfImage = AlignValue(imageSize, opt->SectionAlignment);
-			opt->SizeOfHeaders = 1024;
-			opt->CheckSum = 0;
-			opt->Subsystem = 2;
-			opt->DllCharacteristics = 0;
+			uint32_t sectionAlignment = 4096;
+			StoreLE32(&opt->SectionAlignment, sectionAlignment);
+			StoreLE32(&opt->FileAlignment, fileAlignment);
+			StoreLE16(&opt->MajorOperatingSystemVersion, 6);
+			StoreLE16(&opt->MinorOperatingSystemVersion, 0);
+			StoreLE16(&opt->MajorImageVersion, 0);
+			StoreLE16(&opt->MinorImageVersion, 0);
+			StoreLE16(&opt->MajorSubsystemVersion, 6);
+			StoreLE16(&opt->MinorSubsystemVersion, 0);
+			StoreLE32(&opt->Win32VersionValue, 0);
+			StoreLE32(&opt->SizeOfImage, AlignValue(imageSize, sectionAlignment));
+			StoreLE32(&opt->SizeOfHeaders, 1024);
+			StoreLE32(&opt->CheckSum, 0);
+			StoreLE16(&opt->Subsystem, 2);
+			StoreLE16(&opt->DllCharacteristics, 0);
 		}
 
 		{
 			coff_optional_header3_64 *opt = (coff_optional_header3_64*)pos;
 			pos += sizeof(coff_optional_header3_64);
-			opt->SizeOfStackReserve = 1024;
-			opt->SizeOfStackCommit = 1024;
-			opt->SizeOfHeapReserve = 1024;
-			opt->SizeOfHeapCommit = 1024;
+			StoreLE64(&opt->SizeOfStackReserve, 1024);
+			StoreLE64(&opt->SizeOfStackCommit, 1024);
+			StoreLE64(&opt->SizeOfHeapReserve, 1024);
+			StoreLE64(&opt->SizeOfHeapCommit, 1024);
 		}
 
 		{
 			coff_optional_header4 *opt = (coff_optional_header4*)pos;
 			pos += sizeof(coff_optional_header4);
-			opt->LoaderFlags = 0;
-			opt->NumberOfRvaAndSizes = 16;
+			StoreLE32(&opt->LoaderFlags, 0);
+			StoreLE32(&opt->NumberOfRvaAndSizes, 16);
 		}
 
 		coff_data_directory *dd = (coff_data_directory*)pos;
-		dd[1].VirtualAddress = obj->FilePointers[ObjFilePointerToImportDescriptorBegin].VirtualAddress;
-		dd[1].Size = obj->FilePointers[ObjFilePointerToImportDescriptorEnd].VirtualAddress - obj->FilePointers[ObjFilePointerToImportDescriptorBegin].VirtualAddress;
-		dd[12].VirtualAddress = obj->FilePointers[ObjFilePointerToImportAddressesBegin].VirtualAddress;
-		dd[12].Size = obj->FilePointers[ObjFilePointerToImportAddressesEnd].VirtualAddress - obj->FilePointers[ObjFilePointerToImportAddressesBegin].VirtualAddress;
+		StoreLE32(&dd[1].VirtualAddress, obj->FilePointers[ObjFilePointerToImportDescriptorBegin].VirtualAddress);
+		StoreLE32(&dd[1].Size, obj->FilePointers[ObjFilePointerToImportDescriptorEnd].VirtualAddress - obj->FilePointers[ObjFilePointerToImportDescriptorBegin].VirtualAddress);
+		StoreLE32(&dd[12].VirtualAddress, obj->FilePointers[ObjFilePointerToImportAddressesBegin].VirtualAddress);
+		StoreLE32(&dd[12].Size, obj->FilePointers[ObjFilePointerToImportAddressesEnd].VirtualAddress - obj->FilePointers[ObjFilePointerToImportAddressesBegin].VirtualAddress);
 		pos += sizeof(coff_data_directory) * 16;
 	}
 	else
 	{
-		fh->SizeOfOptionalHeader = 0;
-		fh->Characteristics = 0;
+		StoreLE16(&fh->SizeOfOptionalHeader, 0);
+		StoreLE16(&fh->Characteristics, 0);
 	}
 
 	coff_section_header *shs = (coff_section_header*)pos;
@@ -1077,30 +1084,30 @@ uint32_t WriteCoffObject(const obj_file *obj, void *dataVoid, size_t dataSize)
 			stringTablePos += len + 1;
 		}
 
-		sh->Misc.VirtualSize = sec->VirtualSize;
-		sh->VirtualAddress = sec->VirtualAddress;
-		sh->SizeOfRawData = sec->DataSize;
+		StoreLE32(&sh->Misc.VirtualSize, sec->VirtualSize);
+		StoreLE32(&sh->VirtualAddress, sec->VirtualAddress);
+		StoreLE32(&sh->SizeOfRawData, sec->DataSize);
 		
 		if (sec->DataSize > 0)
 		{
 			rawDataPos = AlignValue(rawDataPos, fileAlignment);
-			sh->PointerToRawData = rawDataPos;
+			StoreLE32(&sh->PointerToRawData, rawDataPos);
 			memcpy((char*)data + rawDataPos, sec->Data, sec->DataSize);
 			rawDataPos += sec->DataSize;
 		}
 
-		sh->NumberOfRelocations = sec->NumRelocations;
+		StoreLE16(&sh->NumberOfRelocations, sec->NumRelocations);
 		if (sec->NumRelocations > 0)
 		{
 			rawDataPos = AlignValue(rawDataPos, 4);
-			sh->PointerToRelocations = rawDataPos;
+			StoreLE32(&sh->PointerToRelocations, rawDataPos);
 			coff_relocation *cr = (coff_relocation*)((char*)data + rawDataPos);
 			for (uint32_t rI = 0; rI < sec->NumRelocations; rI++)
 			{
 				const obj_relocation *rl = &sec->Relocations[rI];
-				cr[rI].VirtualAddress = rl->Address;
-				cr[rI].SymbolTableIndex = rl->SymbolIndex;
-				cr[rI].Type = rl->Type;
+				StoreLE32U(&cr[rI].VirtualAddress, rl->Address);
+				StoreLE32U(&cr[rI].SymbolTableIndex, rl->SymbolIndex);
+				StoreLE16U(&cr[rI].Type, rl->Type);
 			}
 			rawDataPos += sizeof(coff_relocation) * sec->NumRelocations;
 		}
@@ -1134,11 +1141,11 @@ uint32_t WriteCoffObject(const obj_file *obj, void *dataVoid, size_t dataSize)
 		if (sec->Flags & SectionWrite)
 			flags |= IMAGE_SCN_MEM_WRITE;
 
-		sh->Characteristics = flags;
+		StoreLE32(&sh->Characteristics, flags);
 	}
 
 	rawDataPos = AlignValue(rawDataPos, 16);
-	fh->PointerToSymbolTable = rawDataPos;
+	StoreLE32(&fh->PointerToSymbolTable, rawDataPos);
 
 	coff_symbol *css = (coff_symbol*)((char*)data + rawDataPos);
 
@@ -1155,21 +1162,21 @@ uint32_t WriteCoffObject(const obj_file *obj, void *dataVoid, size_t dataSize)
 		}
 		else
 		{
-			cs->Name.Long.Zeroes = 0;
-			cs->Name.Long.StringIndex = stringTablePos;
+			StoreLE32U(&cs->Name.Long.Zeroes, 0);
+			StoreLE32U(&cs->Name.Long.StringIndex, stringTablePos);
 
 			memcpy(stringTable + stringTablePos, sym->Name, nameLen + 1);
 			stringTablePos += nameLen + 1;
 		}
 
-		cs->Value = sym->Address;
+		StoreLE32U(&cs->Value, sym->Address);
 		if (sym->Flags & ObjSymbolDefine)
 		{
-			cs->SectionNumber = sym->DefinedInSection + 1;
+			StoreLE16U(&cs->SectionNumber, sym->DefinedInSection + 1);
 		}
 		else
 		{
-			cs->SectionNumber = 0;
+			StoreLE16U(&cs->SectionNumber, 0);
 		}
 
 		if (sym->Flags & ObjSymbolInternal)
@@ -1177,13 +1184,13 @@ uint32_t WriteCoffObject(const obj_file *obj, void *dataVoid, size_t dataSize)
 		else if (sym->Flags & ObjSymbolExternal)
 			cs->StorageClass = IMAGE_SYM_CLASS_EXTERNAL;
 
-		cs->Type = 0;
+		StoreLE16U(&cs->Type, 0);
 		cs->NumberOfAuxSymbols = 0;
 	}
 
 	rawDataPos += obj->NumSymbols * sizeof(coff_symbol);
 
-	*(uint32_le*)stringTable = stringTablePos;
+	StoreLE32UV(stringTable, stringTablePos);
 	memcpy((char*)data + rawDataPos, stringTable, stringTablePos);
 	rawDataPos += stringTablePos;
 
@@ -1506,37 +1513,37 @@ arc_sym_found: {}
 				switch (reloc->Type)
 				{
 					case IMAGE_REL_AMD64_ADDR64:
-						*(uint64_unalgined_le*)p = *(uint64_unalgined_le*)p + lsym->VirtualAddress + obj->ImageBase;
+						StoreLE64UV(p, LoadLE64UV(p) + lsym->VirtualAddress + obj->ImageBase);
 						break;
 					case IMAGE_REL_AMD64_ADDR32:
-						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + lsym->VirtualAddress + obj->ImageBase;
+						StoreLE32UV(p, LoadLE32UV(p) + lsym->VirtualAddress + obj->ImageBase);
 						break;
 					case IMAGE_REL_AMD64_ADDR32NB:
-						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + lsym->VirtualAddress;
+						StoreLE32UV(p, LoadLE32UV(p) + lsym->VirtualAddress);
 						break;
 					case IMAGE_REL_AMD64_REL32:
-						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4));
+						StoreLE32UV(p, LoadLE32UV(p) + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4)));
 						break;
 					case IMAGE_REL_AMD64_REL32_1:
-						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 1));
+						StoreLE32UV(p, LoadLE32UV(p) + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 1)));
 						break;
 					case IMAGE_REL_AMD64_REL32_2:
-						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 2));
+						StoreLE32UV(p, LoadLE32UV(p) + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 2)));
 						break;
 					case IMAGE_REL_AMD64_REL32_3:
-						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 3));
+						StoreLE32UV(p, LoadLE32UV(p) + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 3)));
 						break;
 					case IMAGE_REL_AMD64_REL32_4:
-						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 4));
+						StoreLE32UV(p, LoadLE32UV(p) + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 4)));
 						break;
 					case IMAGE_REL_AMD64_REL32_5:
-						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 5));
+						StoreLE32UV(p, LoadLE32UV(p) + (lsym->VirtualAddress - (lins->VirtualAddress + reloc->Address + 4 + 5)));
 						break;
 					case IMAGE_REL_AMD64_SECTION:
 						// TODO
 						break;
 					case IMAGE_REL_AMD64_SECREL:
-						*(uint32_unalgined_le*)p = *(uint32_unalgined_le*)p + (lsym->VirtualAddress - lins->VirtualAddress);
+						StoreLE32UV(p, LoadLE32UV(p) + (lsym->VirtualAddress - lins->VirtualAddress));
 						break;
 				}
 

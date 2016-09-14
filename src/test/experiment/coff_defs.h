@@ -149,22 +149,22 @@ struct coff_symbol
 	{
 		struct 
 		{
-			uint32_unalgined_le Zeroes;
-			uint32_unalgined_le StringIndex;
+			uint32_unaligned_le Zeroes;
+			uint32_unaligned_le StringIndex;
 		} Long;
 		uint8_t Short[8];
 	} Name;
 
-	uint32_unalgined_le Value;
-	uint16_unalgined_le SectionNumber;
-	uint16_unalgined_le Type;
+	uint32_unaligned_le Value;
+	uint16_unaligned_le SectionNumber;
+	uint16_unaligned_le Type;
 	uint8_t StorageClass;
 	uint8_t NumberOfAuxSymbols;
 };
 
 struct coff_relocation
 {
-	uint32_unalgined_le VirtualAddress;
-	uint32_unalgined_le SymbolTableIndex;
-	uint16_unalgined_le Type;
+	uint32_unaligned_le VirtualAddress;
+	uint32_unaligned_le SymbolTableIndex;
+	uint16_unaligned_le Type;
 };

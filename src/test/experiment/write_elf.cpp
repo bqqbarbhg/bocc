@@ -136,41 +136,41 @@ TestCase(ExperimentWriteSimpleELF)
 		eh.e_ident[5] = 1;
 		eh.e_ident[6] = 1;
 		memset(eh.e_ident + 7, 0, 9);
-		eh.e_type = 2;
-		eh.e_machine = 0x3E;
-		eh.e_version = 1;
+		StoreLE16(&eh.e_type, 2);
+		StoreLE16(&eh.e_machine, 0x3E);
+		StoreLE32(&eh.e_version, 1);
 	}
 
 	{
 		elf_header1_64 &eh = *(elf_header1_64*)pos;
 		pos += sizeof(elf_header1_64);
-		eh.e_entry = imageBase + entryPoint;
-		eh.e_phoff = fileProgramHeaderOff;
-		eh.e_shoff = 0;
+		StoreLE64(&eh.e_entry, imageBase + entryPoint);
+		StoreLE64(&eh.e_phoff, fileProgramHeaderOff);
+		StoreLE64(&eh.e_shoff, 0);
 	}
 
 	{
 		elf_header2 &eh = *(elf_header2*)pos;
 		pos += sizeof(elf_header2);
-		eh.e_flags = 0;
-		eh.e_ehsize = 0x40;
-		eh.e_phentsize = sizeof(elf_program_header_64);
-		eh.e_phnum = 1;
-		eh.e_shentsize = sizeof(elf_section_header_64);
-		eh.e_shnum = 0;
-		eh.e_shstrndx = 0;
+		StoreLE32(&eh.e_flags, 0);
+		StoreLE16(&eh.e_ehsize, 0x40);
+		StoreLE16(&eh.e_phentsize, sizeof(elf_program_header_64));
+		StoreLE16(&eh.e_phnum, 1);
+		StoreLE16(&eh.e_shentsize, sizeof(elf_section_header_64));
+		StoreLE16(&eh.e_shnum, 0);
+		StoreLE16(&eh.e_shstrndx, 0);
 	}
 
 	{
 		elf_program_header_64 &ph = *(elf_program_header_64*)(buffer + fileProgramHeaderOff);
-		ph.p_type = 1;
-		ph.p_offset = codeFilePtr;
-		ph.p_vaddr = imageBase + 0;
-		ph.p_paddr = 0;
-		ph.p_filesz = codeFileSize;
-		ph.p_memsz = codeFileSize;
-		ph.p_flags = 0x1|0x2|0x4;
-		ph.p_align = 4096;
+		StoreLE32(&ph.p_type, 1);
+		StoreLE64(&ph.p_offset, codeFilePtr);
+		StoreLE64(&ph.p_vaddr, imageBase + 0);
+		StoreLE64(&ph.p_paddr, 0);
+		StoreLE64(&ph.p_filesz, codeFileSize);
+		StoreLE64(&ph.p_memsz, codeFileSize);
+		StoreLE32(&ph.p_flags, 0x1|0x2|0x4);
+		StoreLE64(&ph.p_align, 4096);
 	}
 
 	TestWriteFullFileToTemp("helloworld.elf", buffer, fileSize);
